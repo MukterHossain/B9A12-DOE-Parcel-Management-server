@@ -36,7 +36,25 @@ async function run() {
   try {
     // Connect the client to the server	(optional starting in v4.7)
     // await client.connect();
+    const userCollection = client.db('doeParcelManage').collection('users')
     const featureCollection = client.db('doeParcelManage').collection('features')
+    
+
+
+//user related api
+
+app.post('/users', async(req, res) =>{
+  const user = req.body;
+  // insert email if user doesnot exists
+  const query = {email: user.email}
+  const existingUser = await userCollection.findOne(query)
+  if(existingUser){
+    return res.send({message: 'user already exists', insertedId: null})
+  }
+  const result = await userCollection.insertOne(user);
+  res.send(result)
+})
+
 
 
 app.get('/features', async(req, res) =>{
