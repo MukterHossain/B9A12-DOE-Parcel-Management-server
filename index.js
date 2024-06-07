@@ -1,7 +1,7 @@
 const express = require('express')
 require('dotenv').config();
 const app = express();
-const { MongoClient, ServerApiVersion } = require('mongodb');
+const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const cors = require('cors')
 // const cookieParser = require('cookie-parser')
 // const jwt = require('jsonwebtoken');
@@ -42,6 +42,11 @@ async function run() {
 
 
 //user related api
+app.get('/users', async(req, res) =>{
+  // const user = req.body;
+  const result = await userCollection.find().toArray();
+  res.send(result)
+})
 
 app.post('/users', async(req, res) =>{
   const user = req.body;
@@ -54,9 +59,31 @@ app.post('/users', async(req, res) =>{
   const result = await userCollection.insertOne(user);
   res.send(result)
 })
+app.patch('/users/admin/:id', async(req, res) =>{
+  const id = req.params.id;
+  const filter = {_id: new ObjectId(id)};
+  const updatedDoc = {
+    $set: {
+      role: 'admin'
+    }
+  }
+  const result = await userCollection.updateOne(filter, updatedDoc);
+  res.send(result)
+})
+app.patch('/users/deliveryMen/:id', async(req, res) =>{
+  const id = req.params.id;
+  const filter = {_id: new ObjectId(id)};
+  const updatedDoc = {
+    $set: {
+      role: 'deliveryMen'
+    }
+  }
+  const result = await userCollection.updateOne(filter, updatedDoc);
+  res.send(result)
+})
 
 
-
+// features related api
 app.get('/features', async(req, res) =>{
   const query = req.body;
   const result = await featureCollection.find(query).toArray()
