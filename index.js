@@ -3,9 +3,10 @@ require('dotenv').config();
 const app = express();
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const cors = require('cors')
+const jwt = require('jsonwebtoken');
 // const cookieParser = require('cookie-parser')
-// const jwt = require('jsonwebtoken');
 // const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY)
+
 
 const port = process.env.PORT || 5000;
 
@@ -39,12 +40,21 @@ async function run() {
     const userCollection = client.db('doeParcelManage').collection('users')
     const featureCollection = client.db('doeParcelManage').collection('features')
     
+    // jwt related api
+app.post('/jwt', async(req, res) =>{
+  const user = req.body;
+  const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, {
+    expiresIn: '365d'
+  })
+  res.send({token})
+})
 
 
 //user related api
 app.get('/users', async(req, res) =>{
-  // const user = req.body;
+  console.log(req.headers)
   const result = await userCollection.find().toArray();
+  console.log(result)
   res.send(result)
 })
 
