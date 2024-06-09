@@ -78,6 +78,17 @@ const verifyAdmin = async (req, res, next) => {
   }
   next()
 }
+// use verify deliveryMen after verifyToken
+const verifyDeliveryMen = async (req, res, next) => {
+  const email = req.decoded.email;
+  const query = { email: email };
+  const user = await userCollection.findOne(query);
+  const deliveryMen = user?.role === 'deliveryMen';
+  if (!deliveryMen) {
+    return res.status(403).send({ message: 'forbidden access' })
+  }
+  next()
+}
 
 //user related api
 app.get('/users', verifyToken, verifyAdmin, async(req, res) =>{
@@ -98,6 +109,7 @@ app.get('/users/admin/:email', verifyToken, async(req, res) =>{
   }
   res.send({admin})
 })
+
 
 app.post('/users', async(req, res) =>{
   const user = req.body;
@@ -121,6 +133,24 @@ app.patch('/users/admin/:id', async(req, res) =>{
   const result = await userCollection.updateOne(filter, updatedDoc);
   res.send(result)
 })
+
+
+
+// delivery men api
+app.get('/users/deliveryMen/:email', verifyToken, verifyDeliveryMen, async(req, res) =>{
+  const email = req.params.email;
+  if(email !== req.decoded.email){
+    return res.status(403).send({message: 'forbidden access'})
+  }
+  const query = {email: email};
+  const user = await userCollection.findOne(query);
+  let deliveryMen = false;
+  if(user){
+    deliveryMen = user?.role === 'deliveryMen';
+  }
+  res.send({deliveryMen})
+})
+
 app.patch('/users/deliveryMen/:id', async(req, res) =>{
   const id = req.params.id;
   const filter = {_id: new ObjectId(id)};
@@ -132,6 +162,7 @@ app.patch('/users/deliveryMen/:id', async(req, res) =>{
   const result = await userCollection.updateOne(filter, updatedDoc);
   res.send(result)
 })
+
 
 
 // booking related api
