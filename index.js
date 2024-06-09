@@ -39,6 +39,7 @@ async function run() {
     // await client.connect();
     const userCollection = client.db('doeParcelManage').collection('users')
     const featureCollection = client.db('doeParcelManage').collection('features')
+    const bookingCollection = client.db('doeParcelManage').collection('bookings')
     
     // jwt related api
 app.post('/jwt', async(req, res) =>{
@@ -129,6 +130,15 @@ app.patch('/users/deliveryMen/:id', async(req, res) =>{
     }
   }
   const result = await userCollection.updateOne(filter, updatedDoc);
+  res.send(result)
+})
+
+
+// booking related api
+app.post('/bookings', async(req, res) =>{
+  const item = req.body;
+  console.log(item)
+  const result = await bookingCollection.insertOne(item)
   res.send(result)
 })
 
