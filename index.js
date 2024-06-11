@@ -165,17 +165,18 @@ app.patch('/users/deliveryMen/:id', async(req, res) =>{
 
 
 
-// booking related api
-app.get('/bookings', verifyToken,  async(req, res) =>{
+// booking related api        verifyDeliveryMen,  
+app.get('/bookings',   async(req, res) =>{
   const query = req.body;
-  const result = await userCollection.find(query).toArray();
+  console.log(query)
+  const result = await bookingCollection.find(query).toArray();
   res.send(result)
 })
-// app.get('/bookings',  async(req, res) =>{
-//   const query = req.body;
-//   const result = await userCollection.find(query).toArray();
-//   res.send(result)
-// })
+app.get('/bookings',  async(req, res) =>{
+  const query = req.body;
+  const result = await bookingCollection.find(query).toArray();
+  res.send(result)
+})
 app.post('/bookings', async(req, res) =>{
   const item = req.body;
   console.log(item)
