@@ -4,15 +4,14 @@ const app = express();
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const cors = require('cors')
 const jwt = require('jsonwebtoken');
-// const cookieParser = require('cookie-parser')
-// const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY)
+
 
 
 const port = process.env.PORT || 5000;
 
 // middleware
 const corsOptions = {
-  origin: ['http://localhost:5173',],
+  origin: ['http://localhost:5173','https://b9a12-doe-parcel-management.web.app', 'https://b9a12-doe-parcel-management.firebaseapp.com/'],
   credentials: true,
   optionSuccessStatus: 200,
 }
@@ -52,7 +51,7 @@ app.post('/jwt', async(req, res) =>{
 
 // middleware/ verify Token 
 const verifyToken = async(req, res, next) => {
-  console.log('inside verify token', req.headers.authorization);
+  // console.log('inside verify token', req.headers.authorization);
   if(!req.headers.authorization){
     return res.status(401).send({message: 'unauthorized access'})
   }
@@ -151,7 +150,7 @@ app.get('/users/deliveryMen/:email', verifyToken, verifyDeliveryMen, async(req, 
   res.send({deliveryMen})
 })
 
-app.patch('/users/deliveryMen/:id', async(req, res) =>{
+app.patch('/users/deliveryMen/:id', verifyDeliveryMen, async(req, res) =>{
   const id = req.params.id;
   const filter = {_id: new ObjectId(id)};
   const updatedDoc = {
@@ -165,10 +164,9 @@ app.patch('/users/deliveryMen/:id', async(req, res) =>{
 
 
 
-// booking related api        verifyDeliveryMen,  
+// booking related api      
 app.get('/bookings',   async(req, res) =>{
   const query = req.body;
-  console.log(query)
   const result = await bookingCollection.find(query).toArray();
   res.send(result)
 })
@@ -179,7 +177,6 @@ app.get('/bookings',  async(req, res) =>{
 })
 app.post('/bookings', async(req, res) =>{
   const item = req.body;
-  console.log(item)
   const result = await bookingCollection.insertOne(item)
   res.send(result)
 })
@@ -194,8 +191,8 @@ app.get('/features', async(req, res) =>{
 
 
     // Send a ping to confirm a successful connection
-    await client.db("admin").command({ ping: 1 });
-    console.log("Pinged your deployment. You successfully connected to MongoDB!");
+    // await client.db("admin").command({ ping: 1 });
+    // console.log("Pinged your deployment. You successfully connected to MongoDB!");
   } finally {
     // Ensures that the client will close when you finish/error
     // await client.close();
