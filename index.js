@@ -11,7 +11,7 @@ const port = process.env.PORT || 5000;
 
 // middleware
 const corsOptions = {
-  origin: ['http://localhost:5173','https://b9a12-doe-parcel-management.web.app', 'https://b9a12-doe-parcel-management.firebaseapp.com/'],
+  origin: ['http://localhost:5173','https://b9a12-doe-parcel-management.web.app', 'https://b9a12-doe-parcel-management.firebaseapp.com', 'https://y-red-five.vercel.app/'],
   credentials: true,
   optionSuccessStatus: 200,
 }
