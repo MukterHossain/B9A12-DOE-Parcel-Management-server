@@ -1,6 +1,7 @@
 const express = require('express')
 require('dotenv').config();
 const app = express();
+const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY)
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const cors = require('cors')
 const jwt = require('jsonwebtoken');
@@ -39,6 +40,7 @@ async function run() {
     const userCollection = client.db('doeParcelManage').collection('users')
     const featureCollection = client.db('doeParcelManage').collection('features')
     const bookingCollection = client.db('doeParcelManage').collection('bookings')
+    const bookPayCollection = client.db('doeParcelManage').collection('bookPays')
     const reviewCollection = client.db('doeParcelManage').collection('reviews')
 
     // jwt related api
@@ -102,6 +104,42 @@ async function run() {
     }
 
 
+        // ********** Home page related api **************
+        // features related api 
+        app.get('/features', async (req, res) => {
+          const query = req.body;
+          const result = await featureCollection.find(query).toArray()
+          res.send(result)
+        })
+        // features Number data from db 
+        app.get('/featureNumber', async(req, res) =>{
+          const totalBooked = await bookingCollection.countDocuments();
+          const totalDelivered = await bookingCollection.countDocuments({status:' Delivered'});
+          const totalUser = await userCollection.countDocuments()
+          console.log({totalBooked, totalDelivered, totalUser});
+          res.send({totalBooked, totalDelivered, totalUser})
+        })
+        // get top delivery Men data from db 
+        app.get('/topDeliMen', async(req, res) =>{
+          const users = await userCollection.find({role:'deliveryMen'}).toArray();;
+          const deliveredData = await Promise.all(users.map(async(user) =>{
+            const deliveryMenId = user._id.toString();
+            const bookings = await bookingCollection.findOne({deliveryMenId: deliveryMenId});
+            const reviews = await reviewCollection.find({deliveryMenId: deliveryMenId}).toArray();
+            const totalRatings = reviews.reduce((acc, review) => acc + parseFloat(review.rating), 0)
+            const averageRating = reviews.length > 0? totalRatings / reviews.length : 0;
+            console.log('reviews,totalRatings,averageRating',reviews,totalRatings,averageRating );
+            return {
+              name: user.name,
+              image:user.image,
+              parcelsDelivered:bookings ? bookings.parcelsDelivered : 0,
+              averageRating:averageRating
+            }
+          }));
+          const topDeliveryMen = deliveredData.sort((a, b) => b.parcelsDelivered - a.parcelsDelivered || b.averageRating - a.averageRating).slice(0, 3)
+          console.log('topDeliveryMen', topDeliveryMen);
+          res.send(topDeliveryMen)
+        })
 
 
     // ******** user related api *********
@@ -109,11 +147,11 @@ async function run() {
       const result = await userCollection.find().toArray();
       res.send(result)
     })
-     // ‍Update a data  Image in db
-     app.put('/updateImage/:id', async (req, res) => {
+    // ‍Update a data  Image in db
+    app.put('/updateImage/:id', async (req, res) => {
       const id = req.params.id;
       const imageData = req.body;
-      console.log('Update image DATa',imageData)
+      console.log('Update image DATa', imageData)
       const query = { _id: new ObjectId(id) };
       const options = { upsert: true }
       const updateDoc = {
@@ -124,17 +162,11 @@ async function run() {
       const result = await userCollection.updateOne(query, updateDoc, options);
       res.send(result)
     })
-    //user Id for review
-    app.get('/review/:email',  async (req, res) => {
-      const email = req.params.email;
-      const query = {email: email}
-      const result = await userCollection.findOne(query)
-      res.send(result)
-    })
+
     // get data user profile
     app.get('/userProfile/:email', verifyToken, async (req, res) => {
       const email = req.params.email;
-      const query = {email: email}
+      const query = { email: email }
       const result = await userCollection.findOne(query)
       res.send(result)
     })
@@ -145,8 +177,8 @@ async function run() {
       const result = await userCollection.findOne(query)
       res.send(result)
     })
-// user role api verifyToken, verifyUser,
-    app.get('/userRole/user/:email',  async (req, res) => {
+    // user role api verifyToken, verifyUser,
+    app.get('/userRole/user/:email', async (req, res) => {
       const email = req.params.email;
       // if (email !== req.decoded.email) {
       //   return res.status(403).send({ message: 'forbidden access' })
@@ -159,13 +191,13 @@ async function run() {
       }
       res.send({ user })
     })
-    
+
     //  Save user related api
     app.put('/user', async (req, res) => {
       const user = req.body;
       // insert email if user doesnot exists
       const query = { email: user?.email }
-      const options = {upsert: true}
+      const options = { upsert: true }
       const updateDoc = {
         $set: {
           ...user
@@ -176,6 +208,14 @@ async function run() {
         return res.send({ message: 'user already exists', insertedId: null })
       }
       const result = await userCollection.updateOne(query, updateDoc, options);
+      res.send(result)
+    })
+
+    // get Payment data from db
+    app.get('/book-payment/:email', async (req, res) => {
+      const email = req.params.email
+      const query = { email: email }
+      const result = await bookPayCollection.find(query).toArray()
       res.send(result)
     })
     // app.post('/users', async (req, res) => {
@@ -208,20 +248,30 @@ async function run() {
       res.send({ admin })
     })
     // get data from bookings by date  for admin statistics verifyToken,
-    app.get('/bar-chart',  async (req, res) => {
-      const barBooking = await bookingCollection.find({},{projection:{
-        
-      requestedDate:1,
-      price: 1,
-      }}).toArray()
-      const chartData =barBooking.map(book =>{
-        const day = new Date(book.requestedDate).getDate()
-        const month = new Date(book.requestedDate).getMonth() + 1
-        const data = [`${day}/${month}`, book?.price]
+    app.get('/bar-chart', async (req, res) => {
+      const barBooking = await bookingCollection.find({}, {
+        projection: {          
+          bookingDate: 1,
+          price: 1,
+        }
+      }).toArray()
+      // console.log('barBooking', barBooking);
+      const chartData = barBooking.map(book => {
+        const day = new Date(book.bookingDate).getDate()
+        const month = new Date(book.bookingDate).getMonth() + 1
+        const data = [`${month}/${day}`, book?.price]
         return data
-      }) 
+      })
       chartData.unshift(['Day', 'Booked'])
+      // console.log('chartData', chartData);
       res.send(chartData)
+    })
+    // get data from bookings for Line chart verifyToken,
+    app.get('/line-chart', async (req, res) => {
+      const bookedParcels = await bookingCollection.countDocuments({status: 'Pending'})
+      const deliveredParcels = await bookingCollection.countDocuments({status: 'Delivered'})
+      console.log('deliveredParcels, bookedParcels',bookedParcels, deliveredParcels);
+      res.send({booked:bookedParcels,delivered:deliveredParcels})
     })
 
     app.patch('/users/admin/:id', async (req, res) => {
@@ -237,16 +287,91 @@ async function run() {
     })
 
     // Get All parcel data from booking
-    app.get('/parcel-allData', async (req, res) =>{
-      const query = req.body;
+    app.get('/parcel-allData', async (req, res) => {
+      const   {fromDate,toDate}  = req.query
+      // console.log('fromDate, toDate', fromDate, toDate);
+      let query= {}
+      if(fromDate || toDate) {
+         query = {
+          requestedDate: {
+            $gte: fromDate,
+            $lte: toDate,
+          }
+        };
+      }
+      
+      const result = await bookingCollection.find(query).toArray()
+      // console.log('result', result);
+      res.send(result)
+    })
+
+    // Get all DeliveryMen **********************************************
+    app.get('/all-delivery-men/deliveryMen', async (req, res) => {
+      const query = { role: 'deliveryMen' }
+      const result = await userCollection.find(query).toArray()
+      res.send(result)
+    })
+    // Get all booking data for Id 
+    app.get('/book-manage', async (req, res) => {
+      const query = req.body
       const result = await bookingCollection.find(query).toArray()
       res.send(result)
+    })
+    // app.get('/book-manage/:id', async (req, res) => {
+    //   const id = req.params.id;
+    //   const query = {_id: new ObjectId(id)}
+    //   const result = await bookingCollection.findOne(query)
+    //   res.send(result)
+    // })
+    // Manage ‍Change to deliveryMen  bookings in db
+    app.put('/deliveryMenUpdate/:id', async (req, res) => {
+      const id = req.params.id;
+      console.log(id)
+      const deliveryMenInfo = req.body;
+      console.log(deliveryMenInfo)
+      const query = { _id: new ObjectId(id) };
+      console.log('query', query)
+      const options = { upsert: true }
+      const updateDoc = {
+        $set: {
+          // ...deliveryMenInfo,
+          status: deliveryMenInfo.status,
+          deliveryMenId: deliveryMenInfo.deliveryMenId,
+          approximateDate: deliveryMenInfo.approximateDate,
+        },
+      }
+      const result = await bookingCollection.updateOne(query, updateDoc, options);
+      console.log('result', result)
+      res.send(result)
+    })
+    // all user data count for all users and  Pagination verifyToken, verifyAdmin,
+    app.get('/allUsers',  async (req, res) => {
+      const size = parseInt(req.query.size)
+      const page = parseInt(req.query.page) - 1
+      const users = await userCollection.find().skip(page * size).limit(size).toArray();
+      for(let user of users){
+        const bookings = await bookingCollection.find({email: user.email}).toArray();
+        user.totalBooking = bookings.length
+        user.totalSpentAmount = bookings.reduce((acc, booking) => acc + parseFloat(booking.price), 0)
+      }
+      res.send(users)
+    })
+
+    // all user data count for Pagination
+    app.get('/userCount', async (req, res) => {
+      const count = await userCollection.estimatedDocumentCount()
+      res.send({ count })
     })
 
 
 
+
+
+
+
+
     //********  delivery men api ******* verifyToken, verifyDeliveryMen,
-    app.get('/users/isDeliveryMen/:email',  async (req, res) => {
+    app.get('/users/isDeliveryMen/:email', async (req, res) => {
       const email = req.params.email;
       // console.log(email)
       // if (email !== req.decoded.email) {
@@ -273,6 +398,58 @@ async function run() {
       const result = await userCollection.updateOne(filter, updatedDoc);
       res.send(result)
     })
+    // Delivery List Api             
+    app.get('/deliveryList', async (req, res) => {
+      const query = { role: 'deliveryMen' }
+      const user = await userCollection.findOne(query)
+      // console.log('user id', user?._id.toString());
+      const menId = { deliveryMenId: user?._id.toString() };
+      // console.log('menId', menId);   
+      const result = await bookingCollection.find(menId).toArray()
+      res.send(result)
+    })
+    // get data for view location
+    app.get('/location/:id', async (req, res) => {
+      const id = req.params.id;
+      console.log('id', id);
+      const query = { _id: new ObjectId(id) }
+      const result = await bookingCollection.findOne(query)
+      res.send(result)
+    })
+    // List Status ‍Change to Cancel  bookings in db
+    app.put('/listStatusUpdate/:id', async (req, res) => {
+      const id = req.params.id;
+      const StatusChange = req.body;
+      const query = { _id: new ObjectId(id) };
+      const options = { upsert: true }
+      const updateDoc = {
+        $set: {
+          ...StatusChange,
+        },
+      }
+      const result = await bookingCollection.updateOne(query, updateDoc, options);
+      res.send(result)
+    })
+    //  Status ‍Change to Delivered  bookings in db  patch
+    app.put('/statusDelivered/:id', async (req, res) => {
+      const id = req.params.id;
+      const deliveredChange = req.body;
+      const query = { _id: new ObjectId(id) };
+      const options = { upsert: true }
+      const updateDoc = {
+        $set: {
+          ...deliveredChange,
+        },
+      }
+      const result = await bookingCollection.updateOne(query, updateDoc, options);
+      res.send(result)
+    })
+    // get data for delivery review
+    app.get('/delivery-review', async (req, res) => {
+      const query = req.body;
+      const result = await reviewCollection.find(query).toArray()
+      res.send(result)
+    })
 
 
 
@@ -283,24 +460,35 @@ async function run() {
     //   const result = await reviewCollection.insertOne(data)
     //   res.send(result)
     // })
-    app.put('/review/:id', async (req, res) => {
-      const reviewData = req.body;
-      const id = req.params.id;
-      const query = { _id: new ObjectId(id) };
-      // insert email if user doesnot exists
-      const options = {upsert: true}
-      const updateDoc = {
-        $set: {
-          ...reviewData
-        }
-      }
-      const existingData = await reviewCollection.findOne(query)
-      if (existingData) {
-        return res.send({ message: 'user already exists', insertedId: null })
-      }
-      const result = await reviewCollection.updateOne(query, updateDoc, options);
+    //user Id for review
+    app.get('/reviewData/:email', async (req, res) => {
+      const email = req.params.email;
+      const query = { email: email }
+      const result = await bookingCollection.findOne(query)
+      // const result = await userCollection.findOne(query)
       res.send(result)
     })
+
+    
+    app.post('/review/:id', async (req, res) => {
+      const reviewData = req.body;
+      // const reviewId = req.body;
+      // const id = req.params.id;
+      console.log(reviewData.deliveryMenId)
+      const query = { deliveryMenId: reviewData.deliveryMenId };
+      console.log('query', query)
+
+      const existingData = await reviewCollection.findOne(query)
+      console.log(existingData)
+      if (existingData) {
+        return res.send({ message: 'Data already exists', insertedId: null })
+      }
+      const result = await reviewCollection.insertOne(reviewData);
+      res.send(result)
+    })
+
+
+
 
     // ********** Booking Related ***********
     // booking related api      
@@ -311,9 +499,11 @@ async function run() {
     // })
 
     //get all bookings data for my parcel 
-     app.get('/myParcel/:email', async (req, res) => {
+    app.get('/myParcel/:email', async (req, res) => {
       const email = req.params.email;
       let query = { email: email }
+      // const id = req.params.id;
+      // const query = {_id: new ObjectId(id)}
       const result = await bookingCollection.find(query).toArray()
       res.send(result)
     })
@@ -321,16 +511,16 @@ async function run() {
     //get bookings data for update bookings 
     app.get('/updateData/:id', async (req, res) => {
       const id = req.params.id;
-      const query = { _id:new ObjectId(id) }
+      const query = { _id: new ObjectId(id) }
       const result = await bookingCollection.findOne(query)
       res.send(result)
     })
-   
+
     // ‍Update a data  bookings in db
     app.put('/updateBook/:id', async (req, res) => {
       const id = req.params.id;
       const updateInfo = req.body;
-      const query = { _id: new ObjectId(id) };
+      const query = { _id: new ObjectId(id)};
       const options = { upsert: true }
       const updateDoc = {
         $set: {
@@ -362,11 +552,55 @@ async function run() {
     })
 
 
-    // features related api
-    app.get('/features', async (req, res) => {
-      const query = req.body;
-      const result = await featureCollection.find(query).toArray()
+
+
+
+
+    // ********** Payment API **********
+    // Get bookings data for payment
+    // Manage ‍Change to deliveryMen  bookings in db
+    app.get('/payment-book/:id', async (req, res) => {
+      const id = req.params.id;
+      console.log(id)
+      const query = { _id: new ObjectId(id) };
+      console.log(query)
+      const result = await bookingCollection.findOne(query);
+      console.log(result)
       res.send(result)
+    })
+
+    // Payment intent 
+    app.post('/create-payment-intent', verifyToken, async (req, res) => {
+      const price = req.body.price;
+      const amount = parseFloat(price) * 100;
+      if (!price || amount < 1) return
+      const paymentIntent = await stripe.paymentIntents.create({
+        amount: amount,
+        currency: 'BDT',
+        // currency: 'usd',
+        payment_method_types: ['card'],
+        // automatic_payment_methods: {
+        //   enabled: true,
+        // },
+      });
+      res.send({
+        clientSecret: paymentIntent.client_secret
+      })
+    })
+    // save payment data in db
+    app.post('/bookPay', verifyToken, async (req, res) => {
+      const bookData = req.body;
+      const result = await bookPayCollection.insertOne(bookData)
+      const bookId = bookData?.bookId;
+      console.log(bookId);
+      const query = { _id: new ObjectId(bookId) }
+      console.log(query);
+      const updateDoc = {
+        $set: { booked: true },
+      }
+      const updateBookings = await bookingCollection.updateOne(query, updateDoc)
+      console.log(updateBookings);
+      res.send({ result, updateBookings })
     })
 
 
