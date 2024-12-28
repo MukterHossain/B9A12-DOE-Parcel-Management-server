@@ -288,9 +288,65 @@ async function run() {
     })
 
     // Get all DeliveryMen **********************************************
+    // app.get('/all-delivery-men/deliveryMen', async (req, res) => {
+    //   const deliveryMen = await bookingCollection.aggregate([
+    //     {$match:{status:"Delivered"}},
+    //     {
+    //       $group:{
+    //         _id:{name:"$name", phone: "$phone"},
+    //         parcelCount: {$sum:1}
+    //       }
+    //     }
+    //   ]).toArray()
+    //   const reviews = await reviewCollection.aggregate([
+    //     {
+    //       $group:{
+    //         _id:"$name",
+    //         averageReview:{$avg:"$review"}
+    //       }
+    //     }
+    //   ]).toArray()
+    //   const mergedData = deliveryMen.map(man=>{
+    //     const review = reviews.find(r=>r._id === man._id.name)
+    //     return {
+    //       name: man._id.name,
+    //       phone:man._id.phone,
+    //       parcelCount:man.parcelCount,
+    //       averageReview: review?.averageReview || 0
+    //     }
+    //   })
+    //   console.log(mergedData);
+    //   res.send(mergedData)
+    // })
     app.get('/all-delivery-men/deliveryMen', async (req, res) => {
+      const deliveryMen = await userCollection.find({ role: 'deliveryMen' }).toArray()
+      const results = await Promise.all(
+        deliveryMen.map(async (man)=>{
+          const phone = man.phone
+          // console.log(phone);
+          const parcelsDelivered = await bookingCollection.countDocuments({
+            
+            status: "Delivered",
+          });
+          // console.log('parcelsDelivered',parcelsDelivered);
+          const reviews = await reviewCollection.find({phone}).toArray()
+          console.log('reviews',reviews);
+          const avgReview = reviews.reduce((acc, review) => acc + review.rating, 0) / (reviews.length || 1)
+          return{
+            name: man.name,
+            phone,
+            parcelsDelivered,
+            avgReview: avgReview.toFixed(2)
+          }
+        })
+      )
+      console.log('results', results);
+      res.send(results)
+    })
+    app.get('/delivery-men', async (req, res) => {
       const query = { role: 'deliveryMen' }
       const result = await userCollection.find(query).toArray()
+      console.log(result);
       res.send(result)
     })
     // Get all booking data for Id 
@@ -303,6 +359,7 @@ async function run() {
     app.put('/deliveryMenUpdate/:id', async (req, res) => {
       const id = req.params.id;
       const deliveryMenInfo = req.body;
+      console.log('deliveryMenInfo',deliveryMenInfo);
       const query = { _id: new ObjectId(id) };
       const options = { upsert: true }
       const updateDoc = {
@@ -313,7 +370,9 @@ async function run() {
           approximateDate: deliveryMenInfo.approximateDate,
         },
       }
+      console.log(updateDoc);
       const result = await bookingCollection.updateOne(query, updateDoc, options);
+      console.log('deliveryMenUpdate', result);
       res.send(result)
     })
     // all user data count for all users and  Pagination 
@@ -372,12 +431,12 @@ async function run() {
     })
     // Delivery List Api             
     app.get('/deliveryList', async (req, res) => {
-      const query = { role: 'deliveryMen' }
-      const user = await userCollection.findOne(query)
-      const menId = { deliveryMenId: user?._id.toString() };  
-      const result = await bookingCollection.find(menId).toArray()
+      const {email} = req.query
+      const user = await userCollection.findOne({email})
+      const result = await bookingCollection.find({deliveryMenId:(user?._id).toString()}).toArray()
       res.send(result)
     })
+   
     // get data for view location
     app.get('/location/:id', async (req, res) => {
       const id = req.params.id;
@@ -431,11 +490,26 @@ async function run() {
       const result = await bookingCollection.findOne(query)
       res.send(result)
     })
+    // *******************************************************************
+    app.get('/reviewMen', async (req, res) => {
+      const {email} = req.query
+      const user = await userCollection.findOne({email})
+      const result = await reviewCollection.find({deliveryMenId:(user?._id).toString()}).toArray()
+      res.send(result)
+    })
+      // app.get('/reviewMen/:email', async (req, res) => {
+    //   const {email} = req.query
+    //   const user = await userCollection.findOne({email})
+    //   const result = await reviewCollection.findOne({deliveryMenId:(user?._id).toString()})
+    //   res.send(result)
+    // })
 
     
     app.post('/review/:id', async (req, res) => {
       const reviewData = req.body;
-      const query = { deliveryMenId: reviewData.deliveryMenId };
+      const query = { 
+        deliveryMenId: reviewData.deliveryMenId,
+        feedback: reviewData.feedback };
 
       const existingData = await reviewCollection.findOne(query)
       console.log(existingData)
@@ -445,6 +519,19 @@ async function run() {
       const result = await reviewCollection.insertOne(reviewData);
       res.send(result)
     })
+    // app.post('/review/:id', async (req, res) => {
+    //   const reviewData = req.body;
+    //   const query = { deliveryMenId: reviewData.deliveryMenId };
+
+    //   const existingData = await reviewCollection.findOne(query)
+    //   console.log(existingData)
+    //   if (existingData) {
+    //     return res.send({ message: 'Data already exists', insertedId: null })
+    //   }
+    //   const result = await reviewCollection.insertOne(reviewData);
+    //   res.send(result)
+    // })
+    // ****************************************************************************
 
 
 
